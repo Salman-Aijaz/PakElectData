@@ -1,6 +1,5 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-import numpy as np
 
 # Load dataset
 df = pd.read_csv("pakistan_election.csv")
@@ -25,7 +24,7 @@ plt.tight_layout()
 plt.savefig('top_15_party_votes.png')
 plt.show()
 
-# # 2. Vote Share by Party (Nationwide) - Pie Chart
+# 2. Vote Share by Party (Nationwide) - Pie Chart
 top_n = 6
 top_parties = party_votes.head(top_n)
 others = party_votes[top_n:].sum()
@@ -33,14 +32,14 @@ top_parties['Others'] = others
 
 plt.figure(figsize=(8, 8))
 top_parties.plot(kind='pie', autopct='%1.1f%%', startangle=140)
-plt.title('Vote Share by Party (Top 8 + Others)')
+plt.title('Vote Share by Party (Top 6 + Others)')
 plt.ylabel('')
 plt.tight_layout()
 plt.savefig('vote_share_pie_chart.png')
 plt.show()
 
 
-# # 3. Total Seats Won by Party
+# 3. Total Seats Won by Party
 winners = df[df['outcome'].str.lower() == 'win']
 party_seats = winners['candidate_party'].value_counts()
 
@@ -56,7 +55,7 @@ plt.savefig('seats_won_by_party.png')
 plt.show()
 
 
-# # 4. Top 10 Candidates by Votes (Barh)
+# 4. Top 10 Candidates by Votes (Barh)
 top_candidates = df.sort_values(by='candidate_votes', ascending=False).head(10)
 
 plt.figure(figsize=(10, 6))
