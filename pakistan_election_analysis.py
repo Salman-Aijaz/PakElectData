@@ -52,6 +52,7 @@ top_candidates = df.sort_values(by='candidate_votes', ascending=False).head(10)
 bars = ax1.barh(top_party_votes.index[::-1], top_party_votes.values[::-1], color=colors_extended)
 ax1.set_title('Total Votes by Top 15 Political Parties', fontsize=16, fontweight='bold')
 ax1.set_xlabel('Total Votes (in millions)', fontsize=12)
+ax1.set_yticks(np.arange(len(top_party_votes)))
 ax1.set_yticklabels(top_party_votes.index[::-1], fontsize=11)
 ax1.grid(axis='x', linestyle='--', alpha=0.6)
 
