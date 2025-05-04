@@ -1,143 +1,197 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# IMPORTS
+# ──────────────────────────────────────────────────────────────────────────────
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
+import logging
 
-# Set style for better aesthetics
+# ──────────────────────────────────────────────────────────────────────────────
+# LOGGER CONFIGURATION
+# ──────────────────────────────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.FileHandler("election_analysis.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# GLOBAL STYLES & CONSTANTS
+# ──────────────────────────────────────────────────────────────────────────────
 plt.style.use('seaborn-v0_8-whitegrid')
 sns.set_palette("colorblind")
 
-# Create a figure with subplots, with more space between them
-fig = plt.figure(figsize=(20, 16))
-plt.subplots_adjust(hspace=0.4, wspace=0.3)
+# Font and style constants
+TITLE_FONT_SIZE = 16
+LABEL_FONT_SIZE = 12
+TICK_FONT_SIZE = 11
+ANNOTATION_FONT_SIZE = 10
+LEGEND_FONT_SIZE = 11
+FIGURE_TITLE_SIZE = 20
+FONT_WEIGHT = 'bold'
 
-# Define a custom color palette for consistency
-colors = sns.color_palette("colorblind", 10)
-colors_extended = sns.color_palette("bright", 15)
+# General constants
+TOP_N_PARTIES = 15
+TOP_N_PIE = 6
+TOP_N_CANDIDATES = 10
 
-# Create the four subplots with specific positions and sizes
-ax1 = plt.subplot2grid((2, 2), (0, 0), fig=fig)  # Top votes bar chart
-ax2 = plt.subplot2grid((2, 2), (0, 1), fig=fig)  # Vote share pie chart
-ax3 = plt.subplot2grid((2, 2), (1, 0), fig=fig)  # Seats won chart
-ax4 = plt.subplot2grid((2, 2), (1, 1), fig=fig)  # Top candidates chart
+# ──────────────────────────────────────────────────────────────────────────────
+# DATA LOADING & CLEANING
+# ──────────────────────────────────────────────────────────────────────────────
+def load_and_clean_data(filepath):
+    try:
+        df = pd.read_csv(filepath)
+        df['candidate_party'] = df['candidate_party'].str.strip()
 
-# Load dataset
-df = pd.read_csv("pakistan_election.csv")
+        required_columns = ['candidate_party', 'candidate_votes', 'candidate_name', 'outcome']
+        initial_count = len(df)
+        df.dropna(subset=required_columns, inplace=True)
+        dropped = initial_count - len(df)
+        if dropped > 0:
+            logger.warning(f"Dropped {dropped} rows due to missing critical values.")
+        return df
 
-# Clean up party names (remove extra spaces)
-df['candidate_party'] = df['candidate_party'].str.strip()
+    except FileNotFoundError:
+        logger.error(f"File '{filepath}' not found.")
+        exit(1)
+    except pd.errors.EmptyDataError:
+        logger.error("File is empty.")
+        exit(1)
+    except pd.errors.ParserError:
+        logger.error("Failed to parse CSV file. Please check its format.")
+        exit(1)
+    except Exception as e:
+        logger.exception(f"An unexpected error occurred: {e}")
+        exit(1)
 
-# Group by total votes per party
-party_votes = df.groupby('candidate_party')['candidate_votes'].sum().sort_values(ascending=False)
+# ──────────────────────────────────────────────────────────────────────────────
+# DATA PROCESSING FUNCTIONS
+# ──────────────────────────────────────────────────────────────────────────────
+def get_party_votes(df):
+    return df.groupby('candidate_party')['candidate_votes'].sum().sort_values(ascending=False)
 
-# Select top N parties
-top_n = 15
-top_party_votes = party_votes.head(top_n)
-
-# Precompute other variables for efficiency
-top_n_pie = 6
-top_parties = party_votes.head(top_n_pie)
-others = party_votes[top_n_pie:].sum()
-pie_data = pd.Series(top_parties.values.tolist() + [others], 
+def get_pie_data(party_votes):
+    top_parties = party_votes.head(TOP_N_PIE)
+    others = party_votes[TOP_N_PIE:].sum()
+    return pd.Series(top_parties.tolist() + [others], 
                      index=top_parties.index.tolist() + ['Others'])
 
-# Get winners and party seats
-winners = df[df['outcome'].str.lower() == 'win']
-party_seats = winners['candidate_party'].value_counts()
+def get_party_seats(df):
+    winners = df[df['outcome'].str.lower() == 'win']
+    return winners['candidate_party'].value_counts()
 
-# Top 10 candidates by votes
-top_candidates = df.sort_values(by='candidate_votes', ascending=False).head(10)
+def get_top_candidates(df):
+    return df.sort_values(by='candidate_votes', ascending=False).head(TOP_N_CANDIDATES)
 
-# 1. Total Votes by Top 15 Political Parties (Horizontal Bar Chart)
-bars = ax1.barh(top_party_votes.index[::-1], top_party_votes.values[::-1], color=colors_extended)
-ax1.set_title('Total Votes by Top 15 Political Parties', fontsize=16, fontweight='bold')
-ax1.set_xlabel('Total Votes (in millions)', fontsize=12)
-ax1.set_yticks(np.arange(len(top_party_votes)))
-ax1.set_yticklabels(top_party_votes.index[::-1], fontsize=11)
-ax1.grid(axis='x', linestyle='--', alpha=0.6)
+# ──────────────────────────────────────────────────────────────────────────────
+# PLOTTING FUNCTIONS
+# ──────────────────────────────────────────────────────────────────────────────
+def plot_total_votes(ax, top_party_votes, colors):
+    bars = ax.barh(top_party_votes.index[::-1], top_party_votes.values[::-1], color=colors)
+    ax.set_title('Total Votes by Top 15 Political Parties', fontsize=TITLE_FONT_SIZE, fontweight=FONT_WEIGHT)
+    ax.set_xlabel('Total Votes (in millions)', fontsize=LABEL_FONT_SIZE)
+    ax.set_yticks(np.arange(len(top_party_votes)))
+    ax.set_yticklabels(top_party_votes.index[::-1], fontsize=TICK_FONT_SIZE)
+    ax.grid(axis='x', linestyle='--', alpha=0.6)
+    ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x/1_000_000:.1f}M"))
 
-# Format x-axis to show millions
-ax1.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, loc: f"{x/1000000:.1f}M"))
+    offset = top_party_votes.max() * 0.01
+    for bar in bars:
+        width = bar.get_width()
+        ax.text(width + offset, bar.get_y() + bar.get_height()/2, 
+                f'{width/1_000_000:.2f}M', va='center', fontsize=ANNOTATION_FONT_SIZE)
 
-# Add labels to the bars
-for bar in bars:
-    width = bar.get_width()
-    ax1.text(width + 200000, bar.get_y() + bar.get_height()/2, 
-             f'{width/1000000:.2f}M', va='center', fontsize=10)
+def plot_vote_share_pie(ax, pie_data, colors):
+    wedges, _, autotexts = ax.pie(
+        pie_data,
+        labels=None,
+        autopct='%1.1f%%',
+        startangle=90,
+        colors=colors,
+        wedgeprops={'edgecolor': 'white', 'linewidth': 1.5}
+    )
+    ax.legend(wedges, pie_data.index, title="Political Parties", loc="center left", 
+              bbox_to_anchor=(1, 0, 0.5, 1), fontsize=LEGEND_FONT_SIZE)
+    for autotext in autotexts:
+        autotext.set_color('white')
+        autotext.set_fontsize(ANNOTATION_FONT_SIZE)
+        autotext.set_fontweight(FONT_WEIGHT)
+    ax.set_title('Vote Share by Party (Top 6 + Others)', fontsize=TITLE_FONT_SIZE, fontweight=FONT_WEIGHT)
 
-# 2. Vote Share by Party (Nationwide) - Pie Chart
-wedges, texts, autotexts = ax2.pie(
-    pie_data, 
-    labels=None,
-    autopct='%1.1f%%', 
-    startangle=90, 
-    colors=colors,
-    wedgeprops={'edgecolor': 'white', 'linewidth': 1.5}
-)
+def plot_seats_won(ax, party_seats, colors):
+    top_seats = party_seats.head(TOP_N_PARTIES)
+    bars = ax.bar(np.arange(len(top_seats)), top_seats.values, color=colors)
+    ax.set_title('Total Seats Won by Top 15 Parties', fontsize=TITLE_FONT_SIZE, fontweight=FONT_WEIGHT)
+    ax.set_ylabel('Number of Seats', fontsize=LABEL_FONT_SIZE)
+    ax.set_xticks(np.arange(len(top_seats)))
+    ax.set_xticklabels(top_seats.index, rotation=45, ha='right', fontsize=TICK_FONT_SIZE)
+    ax.grid(axis='y', linestyle='--', alpha=0.6)
 
-# Improve the pie chart legend
-ax2.legend(
-    wedges, 
-    pie_data.index, 
-    title="Political Parties",
-    loc="center left", 
-    bbox_to_anchor=(1, 0, 0.5, 1)
-)
+    for bar in bars:
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width()/2., height + 5,
+                f'{height:.0f}', ha='center', va='bottom', fontsize=ANNOTATION_FONT_SIZE)
 
-# Set properties for the percentage labels
-for autotext in autotexts:
-    autotext.set_color('white')
-    autotext.set_fontsize(11)
-    autotext.set_fontweight('bold')
+def plot_top_candidates(ax, top_candidates, colors):
+    bars = ax.barh(top_candidates['candidate_name'], top_candidates['candidate_votes'], color=colors)
+    ax.set_xlabel('Votes', fontsize=LABEL_FONT_SIZE)
+    ax.set_title('Top 10 Candidates by Votes', fontsize=TITLE_FONT_SIZE, fontweight=FONT_WEIGHT)
+    ax.invert_yaxis()
+    ax.grid(axis='x', linestyle='--', alpha=0.6)
+    ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x/1_000:.0f}K"))
 
-ax2.set_title('Vote Share by Party (Top 6 + Others)', fontsize=16, fontweight='bold')
+    offset = top_candidates['candidate_votes'].max() * 0.01
+    label_offset = top_candidates['candidate_votes'].min() * 0.005
 
-# 3. Total Seats Won by Party
-# Get top 15 parties by seats for better visualization
-top_seats = party_seats.head(15)
-bars = ax3.bar(np.arange(len(top_seats)), top_seats.values, color=colors_extended)
-ax3.set_title('Total Seats Won by Top 15 Parties', fontsize=16, fontweight='bold')
-ax3.set_ylabel('Number of Seats', fontsize=12)
-ax3.set_xticks(np.arange(len(top_seats)))
-ax3.set_xticklabels(top_seats.index, rotation=45, ha='right', fontsize=11)
-ax3.grid(axis='y', linestyle='--', alpha=0.6)
+    for bar in bars:
+        width = bar.get_width()
+        ax.text(width + offset, bar.get_y() + bar.get_height()/2, 
+                f'{width/1_000:.1f}K', va='center', fontsize=ANNOTATION_FONT_SIZE)
 
-# Add value labels on top of each bar
-for bar in bars:
-    height = bar.get_height()
-    ax3.text(bar.get_x() + bar.get_width()/2., height + 5,
-             f'{height:.0f}', ha='center', va='bottom', fontsize=10)
+    for i, candidate in enumerate(top_candidates['candidate_name']):
+        party = top_candidates.iloc[i]['candidate_party']
+        ax.text(label_offset, bars[i].get_y() + bars[i].get_height()/2, 
+                f"({party})", va='center', ha='left', fontsize=ANNOTATION_FONT_SIZE, color='black')
 
-# 4. Top 10 Candidates by Votes (Horizontal Bar Chart)
-bars = ax4.barh(top_candidates['candidate_name'], top_candidates['candidate_votes'], color=colors[0:10])
-ax4.set_xlabel('Votes', fontsize=12)
-ax4.set_title('Top 10 Candidates by Votes', fontsize=16, fontweight='bold')
-ax4.invert_yaxis()  # Highest on top
-ax4.grid(axis='x', linestyle='--', alpha=0.6)
+# ──────────────────────────────────────────────────────────────────────────────
+# MAIN FUNCTION
+# ──────────────────────────────────────────────────────────────────────────────
+def main():
+    df = load_and_clean_data("pakistan_election.csv")
 
-# Format the x-axis to show thousands
-ax4.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, loc: f"{x/1000:.0f}K"))
+    party_votes = get_party_votes(df)
+    pie_data = get_pie_data(party_votes)
+    party_seats = get_party_seats(df)
+    top_candidates = get_top_candidates(df)
 
-# Add labels to the bars
-for bar in bars:
-    width = bar.get_width()
-    ax4.text(width + 5000, bar.get_y() + bar.get_height()/2, 
-             f'{width/1000:.1f}K', va='center', fontsize=10)
+    colors = sns.color_palette("colorblind", 10)
+    colors_extended = sns.color_palette("bright", 15)
 
-# Add a note about the party abbreviation for each candidate
-for i, candidate in enumerate(top_candidates['candidate_name']):
-    party = top_candidates.iloc[i]['candidate_party']
-    ax4.text(5000, bars[i].get_y() + bars[i].get_height()/2, 
-             f"({party})", va='center', ha='left', fontsize=9, color='black')
+    fig = plt.figure(figsize=(20, 16))
+    plt.subplots_adjust(hspace=0.4, wspace=0.3)
 
-# Add an overall title for the entire figure
-plt.suptitle('Pakistan Elections Analysis', fontsize=20, fontweight='bold', y=0.98)
+    ax1 = plt.subplot2grid((2, 2), (0, 0), fig=fig)
+    ax2 = plt.subplot2grid((2, 2), (0, 1), fig=fig)
+    ax3 = plt.subplot2grid((2, 2), (1, 0), fig=fig)
+    ax4 = plt.subplot2grid((2, 2), (1, 1), fig=fig)
 
-# Adjust layout
-plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plot_total_votes(ax1, party_votes.head(TOP_N_PARTIES), colors_extended)
+    plot_vote_share_pie(ax2, pie_data, colors)
+    plot_seats_won(ax3, party_seats, colors_extended)
+    plot_top_candidates(ax4, top_candidates, colors)
 
-# Save the figure with high resolution
-plt.savefig('election_analysis.png', dpi=300, bbox_inches='tight')
+    plt.suptitle('Pakistan Elections Analysis', fontsize=FIGURE_TITLE_SIZE, fontweight=FONT_WEIGHT, y=0.98)
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.savefig('election_analysis.png', dpi=300, bbox_inches='tight')
+    plt.show()
 
-# Show the plot
-plt.show()
+# ──────────────────────────────────────────────────────────────────────────────
+# ENTRY POINT
+# ──────────────────────────────────────────────────────────────────────────────
+if __name__ == "__main__":
+    main()
